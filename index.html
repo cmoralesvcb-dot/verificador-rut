@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<!--
+  El verificador de RUT, versión de pantalla (19-10-2026).
+
+  Qué es: lo que el ejecutivo mira ANTES de ingresar a un cliente. Escribe el RUT y la pantalla le
+  contesta una de cuatro cosas —FRAUDE, MULTIAFILIACIÓN, POSIBLE FRAUDE o SIN ANTECEDENTES—. Es lo que
+  el dueño pidió: «basta con que me indique que es fraude, multiafiliación o posible fraude antes de
+  hacer su ingreso, lo cual siempre se hace manual».
+
+  Tres decisiones que se ven en el código:
+
+  1. **La llave pública va acá y está bien.** `anon` está diseñada para estar en el navegador: no abre
+     nada por sí sola, porque cada tabla y cada función tienen sus políticas. La que NUNCA sale de este
+     archivo es la `service_role`.
+  2. **Todo pasa por sesión.** Sin entrar con correo y contraseña, la base no contesta: la función del
+     veredicto está concedida solo a usuarios con sesión. La clave pública no es un pase libre.
+  3. **El veredicto tiene prioridad sobre el formulario.** Si sale FRAUDE, el botón de ingresar no
+     aparece: no es un aviso que se pueda saltar con un clic.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verificador de RUT</title>
+<style>
+  :root { --fondo:#0f1115; --caja:#171a21; --linea:#272c36; --tinta:#e8eaf0; --tenue:#9aa3b2;
+          --rojo:#d92d20; --naranja:#e8590c; --amarillo:#b58b00; --verde:#12805c; --azul:#2f6feb; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:16px 18px; border-bottom:1px solid var(--linea); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  header h1 { font-size:17px; margin:0; font-weight:650; }
+  header small { color:var(--tenue); font-size:12px; display:block; font-weight:400; }
+  main { padding:16px 18px 48px; max-width:640px; margin:0 auto; }
+  .caja { background:var(--caja); border:1px solid var(--linea); border-radius:12px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--tenue); margin:10px 0 6px; }
+  input, select, textarea { width:100%; padding:12px 13px; font-size:16px; color:var(--tinta);
+    background:#10131a; border:1px solid var(--linea); border-radius:9px; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--azul); outline-offset:1px; }
+  button { width:100%; padding:13px; font-size:16px; font-weight:650; color:#fff; background:var(--azul);
+    border:0; border-radius:9px; margin-top:14px; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:default; }
+  button.secundario { background:#22262f; color:var(--tenue); font-weight:500; }
+  .veredicto { border-radius:12px; padding:16px; margin-bottom:14px; border:1px solid var(--linea); display:none; }
+  .veredicto h2 { margin:0 0 6px; font-size:20px; letter-spacing:.02em; }
+  .veredicto p { margin:0; font-size:14.5px; }
+  .veredicto .rut { font-family:ui-monospace,Consolas,monospace; color:var(--tenue); font-size:13px; margin-top:8px; }
+  .v-FRAUDE { background:#2a1210; border-color:var(--rojo); } .v-FRAUDE h2 { color:#ff8b80; }
+  .v-MULTIAFILIACION { background:#2a1a0d; border-color:var(--naranja); } .v-MULTIAFILIACION h2 { color:#ffab70; }
+  .v-POSIBLE_FRAUDE { background:#241f09; border-color:var(--amarillo); } .v-POSIBLE_FRAUDE h2 { color:#f0cf5f; }
+  .v-SIN_ANTECEDENTES { background:#0c1f19; border-color:var(--verde); } .v-SIN_ANTECEDENTES h2 { color:#5fd6a8; }
+  .v-ERROR { background:#1b1d22; border-color:var(--linea); } .v-ERROR h2 { color:var(--tenue); }
+  .oculto { display:none !important; }
+  .aviso { font-size:13px; color:var(--tenue); margin-top:10px; }
+  .ok { color:#5fd6a8; } .mal { color:#ff8b80; }
+  .fila { display:flex; gap:10px; } .fila > * { flex:1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Verificador de RUT</h1>
+    <small>antes de ingresar, se consulta</small>
+  </div>
+  <button id="salir" class="secundario oculto" style="width:auto; margin:0; padding:9px 14px;">Salir</button>
+</header>
+
+<main>
+
+  <!-- Entrada: correo y contraseña, creados por el dueño en Supabase (Authentication → Users). -->
+  <section id="entrada" class="caja">
+    <label for="correo">Correo</label>
+    <input id="correo" type="email" autocomplete="username" placeholder="tu correo">
+    <label for="clave">Contraseña</label>
+    <input id="clave" type="password" autocomplete="current-password" placeholder="tu contraseña">
+    <button id="entrar">Entrar</button>
+    <p id="error-entrada" class="aviso mal"></p>
+  </section>
+
+  <!-- La consulta. -->
+  <section id="consulta" class="caja oculto">
+    <label for="rut">RUT del cliente</label>
+    <input id="rut" inputmode="text" placeholder="15.771.053-2" autocomplete="off">
+    <button id="verificar">Verificar</button>
+    <p class="aviso">Se consulta el registro completo. No queda guardado el RUT solo por consultarlo.</p>
+  </section>
+
+  <div id="veredicto" class="veredicto">
+    <h2 id="v-titulo"></h2>
+    <p id="v-detalle"></p>
+    <p id="v-rut" class="rut"></p>
+  </div>
+
+  <!-- El ingreso: solo aparece si el veredicto no es FRAUDE. -->
+  <section id="ingreso" class="caja oculto">
+    <h3 style="margin:0 0 4px; font-size:15px;">Anotar el ingreso</h3>
+    <p class="aviso" style="margin-top:0;">Anotarlo es lo que protege al próximo ejecutivo. Es un dato, no un juicio.</p>
+    <label for="isapre">Isapre</label>
+    <select id="isapre">
+      <option value="">— elige —</option>
+      <option>Colmena</option><option>Consalud</option><option>Cruz Blanca</option>
+      <option>Banmédica</option><option>Vida Tres</option><option>Nueva Masvida</option>
+      <option>Esencial</option><option>Fonasa</option>
+    </select>
+    <div class="fila">
+      <div>
+        <label for="fecha">Fecha de afiliación</label>
+        <input id="fecha" type="date">
+      </div>
+    </div>
+    <label for="nota">Nota (opcional)</label>
+    <textarea id="nota" rows="2" maxlength="280" placeholder="lo que convenga recordar"></textarea>
+    <button id="anotar">Anotar ingreso</button>
+    <p id="estado-ingreso" class="aviso"></p>
+  </section>
+
+</main>
+
+<script>
+// La URL y la clave pública del proyecto. Públicas a propósito: la protección son las políticas de la
+// base, no el secreto de esta clave. Si algún día cambian las claves, se cambian acá y se publica de nuevo.
+const SUPABASE_URL = "https://mypssxutagholelmiolu.supabase.co";
+const SUPABASE_ANON = "sb_publishable_LOUYqu66Fjb3qhaA8NanSg__O1XaSa1";
+
+const $ = (id) => document.getElementById(id);
+let sesion = null;
+
+function guardar(s) {
+  sesion = s;
+  if (s) sessionStorage.setItem("verificador", JSON.stringify(s));
+  $("entrada").classList.toggle("oculto", !!s);
+  $("consulta").classList.toggle("oculto", !s);
+  $("salir").classList.toggle("oculto", !s);
+  if (s) $("rut").focus();
+}
+
+async function entrar() {
+  const correo = $("correo").value.trim();
+  const clave = $("clave").value;
+  $("error-entrada").textContent = "";
+  if (!correo || !clave) { $("error-entrada").textContent = "Falta el correo o la contraseña."; return; }
+  $("entrar").disabled = true;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON },
+      body: JSON.stringify({ email: correo, password: clave })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error_description || j.msg || j.message || "no pude entrar");
+    guardar(j);
+  } catch (e) {
+    $("error-entrada").textContent = "No pude entrar: " + e.message;
+  } finally {
+    $("entrar").disabled = false;
+  }
+}
+
+function pintar(clase, titulo, detalle, rut) {
+  const caja = $("veredicto");
+  caja.className = "veredicto v-" + clase;
+  $("v-titulo").textContent = titulo;
+  $("v-detalle").textContent = detalle || "";
+  $("v-rut").textContent = rut ? ("RUT " + rut) : "";
+  $("ingreso").classList.toggle("oculto", clase === "FRAUDE" || clase === "ERROR");
+}
+
+async function verificar() {
+  const rut = $("rut").value.trim();
+  if (!rut) return;
+  $("verificar").disabled = true;
+  $("veredicto").className = "veredicto v-ERROR";
+  $("v-titulo").textContent = "Consultando…";
+  $("v-detalle").textContent = "";
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verificar_rut`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON,
+        Authorization: "Bearer " + (sesion?.access_token || SUPABASE_ANON)
+      },
+      body: JSON.stringify({ p_rut: rut })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.message || j.hint || "no pude consultar");
+    const fila = Array.isArray(j) ? j[0] : j;
+    if (!fila || !fila.veredicto) throw new Error("la base no devolvió veredicto");
+    const titulos = {
+      FRAUDE: "FRAUDE — no ingresar",
+      MULTIAFILIACION: "MULTIAFILIACIÓN",
+      POSIBLE_FRAUDE: "POSIBLE FRAUDE",
+      SIN_ANTECEDENTES: "SIN ANTECEDENTES"
+    };
+    pintar(fila.veredicto, titulos[fila.veredicto] || fila.veredicto, fila.detalle, rut);
+    if (fila.veredicto !== "FRAUDE") $("fecha").value = new Date().toISOString().slice(0, 10);
+  } catch (e) {
+    // Se distingue «no hay antecedentes» de «no pude preguntar»: un fallo no puede parecer un verde.
+    pintar("ERROR", "NO PUDE CONSULTAR", String(e.message), rut);
+  } finally {
+    $("verificar").disabled = false;
+  }
+}
+
+async function anotar() {
+  const rut = $("rut").value.trim(), isapre = $("isapre").value, fecha = $("fecha").value;
+  const nota = $("nota").value.trim();
+  const estado = $("estado-ingreso");
+  estado.className = "aviso";
+  if (!isapre || !fecha) { estado.textContent = "Falta la isapre o la fecha."; return; }
+  $("anotar").disabled = true;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/ingresos`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON,
+        Authorization: "Bearer " + sesion.access_token,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify({ rut: rut, isapre: isapre, fecha_afiliacion: fecha, nota: nota || null })
+    });
+    if (r.status === 409) { estado.textContent = "Ese ingreso ya estaba anotado (mismo RUT, isapre y fecha)."; }
+    else if (!r.ok) { const t = await r.text(); throw new Error(t.slice(0, 160)); }
+    else { estado.innerHTML = '<span class="ok">Ingreso anotado. Gracias: eso protege al próximo.</span>'; }
+  } catch (e) {
+    estado.innerHTML = '<span class="mal">No se pudo anotar: ' + e.message + '</span>';
+  } finally {
+    $("anotar").disabled = false;
+  }
+}
+
+$("entrar").addEventListener("click", entrar);
+$("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
+$("verificar").addEventListener("click", verificar);
+$("rut").addEventListener("keydown", (e) => { if (e.key === "Enter") verificar(); });
+$("anotar").addEventListener("click", anotar);
+$("salir").addEventListener("click", () => { sessionStorage.removeItem("verificador"); guardar(null); $("veredicto").className = "veredicto"; });
+
+const guardada = sessionStorage.getItem("verificador");
+if (guardada) { try { guardar(JSON.parse(guardada)); } catch { guardar(null); } } else { guardar(null); }
+</script>
+</body>
+</html>
