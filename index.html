@@ -155,9 +155,9 @@
     </section>
 
     <section id="panel-dueno" class="caja oculto">
-      <h3 style="margin:0 0 4px; font-size:15px;">Tu vista de dueño: todo el registro</h3>
-      <p class="aviso" style="margin-top:0;">Esta vista solo la ves tú. El ejecutivo ve únicamente lo que
-      anotó él, más lo que pregunte por RUT.</p>
+      <h3 style="margin:0 0 4px; font-size:15px;">Vista completa del registro</h3>
+      <p class="aviso" style="margin-top:0;">Para el dueño y para la cuenta de prueba con vista completa.
+      El ejecutivo ve únicamente lo que anotó él, más lo que pregunte por RUT.</p>
       <input id="filtro" placeholder="filtrar por RUT o isapre" autocomplete="off">
       <div id="tabla-ingresos" style="margin-top:12px;"><p class="aviso">Cargando…</p></div>
       <h3 style="margin:18px 0 8px; font-size:15px;">Blacklist</h3>
@@ -179,9 +179,11 @@ const $ = (id) => document.getElementById(id);
 let sesion = null;
 let rutEnPantalla = "";
 
-// La vista de dueño se decide por el rol que viaja DENTRO del pase (app_metadata.rol = "dueno"). No es
-// seguridad —esa la pone la base—: es que solo tú veas la tabla completa.
-const esDueno = () => sesion?.user?.app_metadata?.rol === "dueno";
+// La vista completa se decide por el rol que viaja DENTRO del pase: `dueno` (ve todo y edita) o `visor`
+// (ve todo y no edita). El ejecutivo no ve la tabla. La seguridad la pone la base, no esta línea.
+const rol = () => sesion?.user?.app_metadata?.rol || "";
+const esDueno = () => rol() === "dueno";
+const veTodo = () => ["dueno", "visor"].includes(rol());
 
 function guardar(s) {
   sesion = s;
@@ -189,10 +191,11 @@ function guardar(s) {
   $("entrada").classList.toggle("oculto", !!s);
   $("trabajo").classList.toggle("oculto", !s);
   $("salir").classList.toggle("oculto", !s);
-  $("quien").textContent = s ? ((s.user?.email || "sesión abierta") + (esDueno() ? " · dueño" : " · ejecutivo")) : "sin sesión";
-  // La tabla completa es solo para el dueño: el ejecutivo ni siquiera la pide.
-  $("panel-dueno").classList.toggle("oculto", !esDueno());
-  if (s) { cargarUltimos(); if (esDueno()) cargarPanelDueno(); $("rut").focus(); }
+  const quien = { dueno: " · dueño", visor: " · vista completa" }[rol()] || " · ejecutivo";
+  $("quien").textContent = s ? ((s.user?.email || "sesión abierta") + quien) : "sin sesión";
+  // La tabla completa es para quien puede verla: el ejecutivo ni siquiera la pide.
+  $("panel-dueno").classList.toggle("oculto", !veTodo());
+  if (s) { cargarUltimos(); if (veTodo()) cargarPanelDueno(); $("rut").focus(); }
 }
 
 async function entrar() {
@@ -397,7 +400,7 @@ function pintarIngresos(filtro = "") {
       return `<div class="h-item" style="align-items:center;">
         <span><b>${f.rut}</b> · ${f.isapre}</span>
         <span>${f.fecha_afiliacion}${f.nota ? " · " + f.nota : ""}</span>
-        <span><button class="secundario" onclick="editarIngreso(${f.id})">Editar</button></span>
+        <span>${esDueno() ? `<button class="secundario" onclick="editarIngreso(${f.id})">Editar</button>` : ""}</span>
       </div>`;
     }).join("");
 }
@@ -432,14 +435,14 @@ function pintarEtiquetas() {
   const caja = $("tabla-etiquetas");
   if (!filasEtiquetas.length) { caja.innerHTML = '<p class="aviso">La blacklist está vacía.</p>'; return; }
   caja.innerHTML = filasEtiquetas.map((e) => `<div style="border-top:1px solid var(--linea);padding:8px 0;">
-      <div class="h-item" style="padding:0;"><span><b>${e.rut}</b></span><span>${e.creado_en.slice(0, 10)}</span></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+      <div class="h-item" style="padding:0;"><span><b>${e.rut}</b> · ${e.etiqueta}</span><span>${e.creado_en.slice(0, 10)}</span></div>
+      ${esDueno() ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
         <select id="et-${e.id}" style="flex:1;min-width:180px;">
           ${ETIQUETAS.map(([v, t]) => `<option value="${v}" ${v === e.etiqueta ? "selected" : ""}>${t}</option>`).join("")}
         </select>
         <button class="secundario" onclick="guardarEtiqueta(${e.id})">Guardar</button>
         <button class="secundario peligro" onclick="borrarEtiqueta(${e.id})">Quitar</button>
-      </div>
+      </div>` : ""}
       <div class="aviso" style="margin-top:4px;">${e.motivo} · ${e.evidencia}</div>
     </div>`).join("");
 }
