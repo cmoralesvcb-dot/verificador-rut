@@ -169,6 +169,8 @@
       <div id="tabla-ingresos" style="margin-top:12px;"><p class="aviso">Cargando…</p></div>
       <h3 style="margin:18px 0 8px; font-size:15px;">Blacklist</h3>
       <div id="tabla-etiquetas"><p class="aviso">Cargando…</p></div>
+      <button id="confirmar-todas" class="peligro oculto">Confirmar todas las «POR CONFIRMAR» como BLACKLIST</button>
+      <p class="aviso" id="estado-confirmar"></p>
     </section>
 
     <section class="caja">
@@ -401,6 +403,10 @@ async function cargarPanelDueno() {
     if (!ri.ok) throw new Error((await ri.text()).slice(0, 140));
     pintarIngresos(filtro);
     pintarEtiquetas();
+    // El botón de confirmar en bloque solo tiene sentido si hay alguna «por confirmar», y solo para el dueño.
+    const porConfirmar = filasEtiquetas.filter((e) => e.etiqueta === "revisar").length;
+    $("confirmar-todas").classList.toggle("oculto", !(esDueno() && porConfirmar > 0));
+    $("confirmar-todas").textContent = `Confirmar las ${porConfirmar} «POR CONFIRMAR» como BLACKLIST`;
   } catch (e) {
     $("tabla-ingresos").innerHTML = '<p class="aviso mal">No pude leer el registro: ' + e.message + '</p>';
     $("tabla-etiquetas").innerHTML = '<p class="aviso mal">No pude leer la blacklist.</p>';
@@ -510,6 +516,24 @@ async function borrarEtiqueta(id) {
   if (rutEnPantalla) await buscar();
 }
 
+// El paso de «por confirmar» a «BLACKLIST» de una vez, para no repetirlo 55 veces a mano.
+// La decisión sigue siendo del dueño: el botón no aparece hasta que él lo aprieta, y cada fila se puede
+// devolver con su selector.
+async function confirmarTodas() {
+  const cuantas = filasEtiquetas.filter((e) => e.etiqueta === "revisar").length;
+  if (!cuantas) { $("estado-confirmar").textContent = "No hay ninguna por confirmar."; return; }
+  if (!confirm(`¿Pasar las ${cuantas} «por confirmar» a BLACKLIST? Desde ese momento no se podrán ingresar.`)) return;
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/etiquetas?etiqueta=eq.revisar`, {
+    method: "PATCH", headers: cabeceras({ Prefer: "return=minimal" }),
+    body: JSON.stringify({ etiqueta: "fraude_confirmado" })
+  });
+  $("estado-confirmar").textContent = r.ok
+    ? `${cuantas} pasadas a BLACKLIST. Se pueden devolver una por una con su selector.`
+    : "No se pudo: " + (await r.text()).slice(0, 140);
+  await cargarPanelDueno();
+  await cargarUltimos();
+}
+
 async function cargarUltimos() {
   const caja = $("ultimos");
   try {
@@ -530,6 +554,7 @@ $("rut").addEventListener("keydown", (e) => { if (e.key === "Enter") buscar(); }
 $("anotar").addEventListener("click", anotar);
 $("marcar").addEventListener("click", marcar);
 $("filtro").addEventListener("input", () => pintarIngresos(($("filtro").value || "").toLowerCase()));
+$("confirmar-todas").addEventListener("click", confirmarTodas);
 $("salir").addEventListener("click", () => { sessionStorage.removeItem("verificador"); guardar(null); });
 
 const guardada = sessionStorage.getItem("verificador");
