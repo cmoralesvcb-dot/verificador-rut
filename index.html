@@ -1,21 +1,24 @@
 <!DOCTYPE html>
 <!--
-  El verificador de RUT, versión de pantalla (19-10-2026).
+  La pantalla de ingreso (19-10-2026). Es la principal: buscar, ver, anotar y —si toca— marcar en la
+  blacklist.
 
-  Qué es: lo que el ejecutivo mira ANTES de ingresar a un cliente. Escribe el RUT y la pantalla le
-  contesta una de cuatro cosas —FRAUDE, MULTIAFILIACIÓN, POSIBLE FRAUDE o SIN ANTECEDENTES—. Es lo que
-  el dueño pidió: «basta con que me indique que es fraude, multiafiliación o posible fraude antes de
-  hacer su ingreso, lo cual siempre se hace manual».
+  Lo que el dueño pidió, con sus palabras:
+    · «el listado tiene que ser la pagina de ingreso con un buscador para verificar si el rut esta en el
+      listado y con la opcion agregar para agregar un nuevo rut»
+    · «los datos fecha e isapre deben ser obligatorios»
+    · «la palabra estudio me parece muy mojigata podemos ser todavia mas directo o simplemente usar la
+      palabra blacklist; los rut que se ingresen no son blacklist a menos que se indique; los rut
+      ingresados son solo un registro»
 
-  Tres decisiones que se ven en el código:
+  De ahí salen las tres ideas que estructuran esto:
 
-  1. **La llave pública va acá y está bien.** `anon` está diseñada para estar en el navegador: no abre
-     nada por sí sola, porque cada tabla y cada función tienen sus políticas. La que NUNCA sale de este
-     archivo es la `service_role`.
-  2. **Todo pasa por sesión.** Sin entrar con correo y contraseña, la base no contesta: la función del
-     veredicto está concedida solo a usuarios con sesión. La clave pública no es un pase libre.
-  3. **El veredicto tiene prioridad sobre el formulario.** Si sale FRAUDE, el botón de ingresar no
-     aparece: no es un aviso que se pueda saltar con un clic.
+  1. **Registro y blacklist son dos cosas distintas y se ven distintas.** Anotar un ingreso NO marca a
+     nadie: es la bitácora. La marca en la blacklist se pone aparte, a propósito, y con motivo.
+  2. **Fecha e isapre no se pueden dejar en blanco.** Sin esos dos datos la anotación no sirve para
+     detectar la multiafiliación, que es justo para lo que existe.
+  3. **La palabra se dice.** BLACKLIST, con mayúsculas, porque ser claro con el ejecutivo vale más que
+     ser fino.
 -->
 <html lang="es">
 <head>
@@ -26,22 +29,24 @@
   :root { --fondo:#0f1115; --caja:#171a21; --linea:#272c36; --tinta:#e8eaf0; --tenue:#9aa3b2;
           --rojo:#d92d20; --naranja:#e8590c; --amarillo:#b58b00; --verde:#12805c; --azul:#2f6feb; }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--fondo); color:var(--tinta); font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  header { padding:16px 18px; border-bottom:1px solid var(--linea); display:flex; justify-content:space-between; align-items:center; gap:12px; }
-  header h1 { font-size:17px; margin:0; font-weight:650; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:15.5px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:14px 18px; border-bottom:1px solid var(--linea); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:650; }
   header small { color:var(--tenue); font-size:12px; display:block; font-weight:400; }
-  main { padding:16px 18px 48px; max-width:640px; margin:0 auto; }
+  main { padding:14px 18px 60px; max-width:700px; margin:0 auto; }
   .caja { background:var(--caja); border:1px solid var(--linea); border-radius:12px; padding:16px; margin-bottom:14px; }
-  label { display:block; font-size:13px; color:var(--tenue); margin:10px 0 6px; }
+  label { display:block; font-size:13px; color:var(--tenue); margin:12px 0 6px; }
+  label .req { color:#ff8b80; }
   input, select, textarea { width:100%; padding:12px 13px; font-size:16px; color:var(--tinta);
     background:#10131a; border:1px solid var(--linea); border-radius:9px; }
   input:focus, select:focus, textarea:focus { outline:2px solid var(--azul); outline-offset:1px; }
-  button { width:100%; padding:13px; font-size:16px; font-weight:650; color:#fff; background:var(--azul);
-    border:0; border-radius:9px; margin-top:14px; cursor:pointer; }
+  button { padding:13px; font-size:16px; font-weight:650; color:#fff; background:var(--azul);
+    border:0; border-radius:9px; margin-top:14px; cursor:pointer; width:100%; }
   button:disabled { opacity:.55; cursor:default; }
-  button.secundario { background:#22262f; color:var(--tenue); font-weight:500; }
-  .veredicto { border-radius:12px; padding:16px; margin-bottom:14px; border:1px solid var(--linea); display:none; }
-  .veredicto h2 { margin:0 0 6px; font-size:20px; letter-spacing:.02em; }
+  button.secundario { background:#22262f; color:var(--tenue); font-weight:500; width:auto; margin:0; padding:9px 14px; }
+  button.peligro { background:#3a1512; color:#ff8b80; border:1px solid var(--rojo); }
+  .veredicto { border-radius:12px; padding:16px; margin:14px 0; border:1px solid var(--linea); display:none; }
+  .veredicto h2 { margin:0 0 6px; font-size:19px; letter-spacing:.03em; }
   .veredicto p { margin:0; font-size:14.5px; }
   .veredicto .rut { font-family:ui-monospace,Consolas,monospace; color:var(--tenue); font-size:13px; margin-top:8px; }
   .v-FRAUDE { background:#2a1210; border-color:var(--rojo); } .v-FRAUDE h2 { color:#ff8b80; }
@@ -52,7 +57,11 @@
   .oculto { display:none !important; }
   .aviso { font-size:13px; color:var(--tenue); margin-top:10px; }
   .ok { color:#5fd6a8; } .mal { color:#ff8b80; }
-  .fila { display:flex; gap:10px; } .fila > * { flex:1; }
+  .fila { display:flex; gap:10px; flex-wrap:wrap; } .fila > div { flex:1; min-width:140px; }
+  .historial { border-top:1px solid var(--linea); margin-top:14px; padding-top:10px; }
+  .h-item { font-size:13.5px; color:var(--tenue); padding:5px 0; display:flex; justify-content:space-between; gap:10px; }
+  .h-item b { color:var(--tinta); font-weight:600; }
+  .marca-mini { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#ff8b80; }
 </style>
 </head>
 <body>
@@ -60,14 +69,13 @@
 <header>
   <div>
     <h1>Verificador de RUT</h1>
-    <small>antes de ingresar, se consulta</small>
+    <small id="quien">sin sesión</small>
   </div>
-  <button id="salir" class="secundario oculto" style="width:auto; margin:0; padding:9px 14px;">Salir</button>
+  <button id="salir" class="secundario oculto">Salir</button>
 </header>
 
 <main>
 
-  <!-- Entrada: correo y contraseña, creados por el dueño en Supabase (Authentication → Users). -->
   <section id="entrada" class="caja">
     <label for="correo">Correo</label>
     <input id="correo" type="email" autocomplete="username" placeholder="tu correo">
@@ -77,169 +85,246 @@
     <p id="error-entrada" class="aviso mal"></p>
   </section>
 
-  <!-- La consulta. -->
-  <section id="consulta" class="caja oculto">
-    <label for="rut">RUT del cliente</label>
-    <input id="rut" inputmode="text" placeholder="15.771.053-2" autocomplete="off">
-    <button id="verificar">Verificar</button>
-    <p class="aviso">Se consulta el registro completo. No queda guardado el RUT solo por consultarlo.</p>
-  </section>
+  <div id="trabajo" class="oculto">
 
-  <div id="veredicto" class="veredicto">
-    <h2 id="v-titulo"></h2>
-    <p id="v-detalle"></p>
-    <p id="v-rut" class="rut"></p>
-  </div>
+    <section class="caja">
+      <label for="rut">RUT del cliente · <span style="color:var(--tenue)">búscalo antes de ingresar</span></label>
+      <input id="rut" inputmode="text" placeholder="15.771.053-2" autocomplete="off">
+      <button id="buscar">Buscar</button>
+      <p class="aviso">Buscar no guarda nada.</p>
+    </section>
 
-  <!-- El ingreso: solo aparece si el veredicto no es FRAUDE. -->
-  <section id="ingreso" class="caja oculto">
-    <h3 style="margin:0 0 4px; font-size:15px;">Anotar el ingreso</h3>
-    <p class="aviso" style="margin-top:0;">Anotarlo es lo que protege al próximo ejecutivo. Es un dato, no un juicio.</p>
-    <label for="isapre">Isapre</label>
-    <select id="isapre">
-      <option value="">— elige —</option>
-      <option>Colmena</option><option>Consalud</option><option>Cruz Blanca</option>
-      <option>Banmédica</option><option>Vida Tres</option><option>Nueva Masvida</option>
-      <option>Esencial</option><option>Fonasa</option>
-    </select>
-    <div class="fila">
-      <div>
-        <label for="fecha">Fecha de afiliación</label>
-        <input id="fecha" type="date">
-      </div>
+    <div id="veredicto" class="veredicto">
+      <h2 id="v-titulo"></h2>
+      <p id="v-detalle"></p>
+      <p id="v-rut" class="rut"></p>
+      <div id="v-historial" class="historial oculto"></div>
     </div>
-    <label for="nota">Nota (opcional)</label>
-    <textarea id="nota" rows="2" maxlength="280" placeholder="lo que convenga recordar"></textarea>
-    <button id="anotar">Anotar ingreso</button>
-    <p id="estado-ingreso" class="aviso"></p>
-  </section>
 
-  <p class="aviso" style="text-align:center; margin-top:22px;">
-    <a href="lista.html" style="color:#7aa7ff;">Ver el listado del registro</a>
-  </p>
+    <section id="ingreso" class="caja oculto">
+      <h3 style="margin:0 0 2px; font-size:15px;">Anotar el ingreso</h3>
+      <p class="aviso" style="margin-top:0;">Anotar <b>no</b> marca a nadie: es el registro. La marca en la
+      blacklist se pone abajo, a propósito.</p>
+      <div class="fila">
+        <div>
+          <label for="isapre">Isapre de destino <span class="req">*</span></label>
+          <select id="isapre">
+            <option value="">— elige —</option>
+            <option>Colmena</option><option>Consalud</option><option>Cruz Blanca</option>
+            <option>Banmédica</option><option>Vida Tres</option><option>Nueva Masvida</option>
+            <option>Esencial</option><option>Fonasa</option>
+          </select>
+        </div>
+        <div>
+          <label for="fecha">Fecha de afiliación <span class="req">*</span></label>
+          <input id="fecha" type="date">
+        </div>
+      </div>
+      <label for="nota">Nota (opcional)</label>
+      <textarea id="nota" rows="2" maxlength="280" placeholder="lo que convenga recordar: agendado, ya tiene isapre, etc."></textarea>
+      <button id="anotar">Anotar ingreso</button>
+      <p id="estado-ingreso" class="aviso"></p>
+    </section>
 
+    <section id="zona-blacklist" class="caja oculto">
+      <h3 style="margin:0 0 4px; font-size:15px;">Marcar en la BLACKLIST</h3>
+      <p class="aviso" style="margin-top:0;">Solo el dueño. Esto <b>sí</b> cambia el veredicto: ese RUT deja
+      de poder ingresarse.</p>
+      <label for="motivo">Motivo <span class="req">*</span></label>
+      <select id="motivo">
+        <option value="">— elige —</option>
+        <option value="suplantacion">Suplantación de identidad</option>
+        <option value="dato_falso">Dato falso</option>
+        <option value="medio_pago_ajeno">Medio de pago de tercero</option>
+        <option value="datos_de_terceros">Datos de terceros</option>
+        <option value="multiafiliacion">Multiafiliación</option>
+        <option value="no_pago">No pago</option>
+        <option value="otro">Otro</option>
+      </select>
+      <label for="prueba">La prueba (qué pasó, con qué dato se sostiene) <span class="req">*</span></label>
+      <textarea id="prueba" rows="2" maxlength="400" placeholder="ej: ingresó con cédula de otra persona, caso 4471"></textarea>
+      <button id="marcar" class="peligro">Marcar en la blacklist</button>
+      <p id="estado-blacklist" class="aviso"></p>
+    </section>
+
+    <section class="caja">
+      <h3 style="margin:0 0 10px; font-size:15px;">Lo último anotado</h3>
+      <div id="ultimos"><p class="aviso">Cargando…</p></div>
+    </section>
+
+  </div>
 </main>
 
 <script>
-// La URL y la clave pública del proyecto. Públicas a propósito: la protección son las políticas de la
-// base, no el secreto de esta clave. Si algún día cambian las claves, se cambian acá y se publica de nuevo.
 const SUPABASE_URL = "https://mypssxutagholelmiolu.supabase.co";
 const SUPABASE_ANON = "sb_publishable_LOUYqu66Fjb3qhaA8NanSg__O1XaSa1";
-
 const $ = (id) => document.getElementById(id);
 let sesion = null;
+let rutEnPantalla = "";
 
 function guardar(s) {
   sesion = s;
   if (s) sessionStorage.setItem("verificador", JSON.stringify(s));
   $("entrada").classList.toggle("oculto", !!s);
-  $("consulta").classList.toggle("oculto", !s);
+  $("trabajo").classList.toggle("oculto", !s);
   $("salir").classList.toggle("oculto", !s);
-  if (s) $("rut").focus();
+  $("quien").textContent = s ? (s.user?.email || "sesión abierta") : "sin sesión";
+  if (s) { cargarUltimos(); $("rut").focus(); }
 }
 
 async function entrar() {
-  const correo = $("correo").value.trim();
-  const clave = $("clave").value;
+  const correo = $("correo").value.trim(), clave = $("clave").value;
   $("error-entrada").textContent = "";
   if (!correo || !clave) { $("error-entrada").textContent = "Falta el correo o la contraseña."; return; }
   $("entrar").disabled = true;
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON },
+      method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON },
       body: JSON.stringify({ email: correo, password: clave })
     });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.error_description || j.msg || j.message || "no pude entrar");
+    if (!r.ok) throw new Error(j.error_description || j.msg || "no pude entrar");
     guardar(j);
-  } catch (e) {
-    $("error-entrada").textContent = "No pude entrar: " + e.message;
-  } finally {
-    $("entrar").disabled = false;
-  }
+  } catch (e) { $("error-entrada").textContent = "No pude entrar: " + e.message; }
+  finally { $("entrar").disabled = false; }
 }
 
-function pintar(clase, titulo, detalle, rut) {
-  const caja = $("veredicto");
-  caja.className = "veredicto v-" + clase;
-  $("v-titulo").textContent = titulo;
-  $("v-detalle").textContent = detalle || "";
-  $("v-rut").textContent = rut ? ("RUT " + rut) : "";
-  $("ingreso").classList.toggle("oculto", clase === "FRAUDE" || clase === "ERROR");
-}
+const cabeceras = (extra = {}) => ({
+  "Content-Type": "application/json", apikey: SUPABASE_ANON,
+  Authorization: "Bearer " + (sesion?.access_token || SUPABASE_ANON), ...extra
+});
 
-async function verificar() {
+const TITULOS = {
+  FRAUDE: "BLACKLIST — no ingresar",
+  MULTIAFILIACION: "MULTIAFILIACIÓN",
+  POSIBLE_FRAUDE: "POSIBLE FRAUDE",
+  SIN_ANTECEDENTES: "SIN ANTECEDENTES"
+};
+
+async function buscar() {
   const rut = $("rut").value.trim();
   if (!rut) return;
-  $("verificar").disabled = true;
+  rutEnPantalla = rut;
+  $("buscar").disabled = true;
   $("veredicto").className = "veredicto v-ERROR";
-  $("v-titulo").textContent = "Consultando…";
+  $("v-titulo").textContent = "Buscando…";
   $("v-detalle").textContent = "";
+  $("v-historial").classList.add("oculto");
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verificar_rut`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON,
-        Authorization: "Bearer " + (sesion?.access_token || SUPABASE_ANON)
-      },
-      body: JSON.stringify({ p_rut: rut })
+      method: "POST", headers: cabeceras(), body: JSON.stringify({ p_rut: rut })
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.message || j.hint || "no pude consultar");
-    const fila = Array.isArray(j) ? j[0] : j;
-    if (!fila || !fila.veredicto) throw new Error("la base no devolvió veredicto");
-    const titulos = {
-      FRAUDE: "FRAUDE — no ingresar",
-      MULTIAFILIACION: "MULTIAFILIACIÓN",
-      POSIBLE_FRAUDE: "POSIBLE FRAUDE",
-      SIN_ANTECEDENTES: "SIN ANTECEDENTES"
-    };
-    pintar(fila.veredicto, titulos[fila.veredicto] || fila.veredicto, fila.detalle, rut);
-    if (fila.veredicto !== "FRAUDE") $("fecha").value = new Date().toISOString().slice(0, 10);
+    const f = Array.isArray(j) ? j[0] : j;
+    if (!f || !f.veredicto) throw new Error("la base no devolvió veredicto");
+    $("veredicto").className = "veredicto v-" + f.veredicto;
+    $("v-titulo").textContent = TITULOS[f.veredicto] || f.veredicto;
+    $("v-detalle").textContent = f.detalle || "";
+    $("v-rut").textContent = "RUT " + rut;
+    $("ingreso").classList.remove("oculto");
+    $("zona-blacklist").classList.remove("oculto");
+    if (f.veredicto === "FRAUDE") {
+      // En la blacklist no se anota el ingreso: el formulario queda a la vista pero apagado, para que
+      // se entienda que no es un olvido.
+      $("ingreso").classList.add("oculto");
+    }
+    if (!$("fecha").value) $("fecha").value = new Date().toISOString().slice(0, 10);
+    await historialDe(rut);
   } catch (e) {
-    // Se distingue «no hay antecedentes» de «no pude preguntar»: un fallo no puede parecer un verde.
-    pintar("ERROR", "NO PUDE CONSULTAR", String(e.message), rut);
+    // «No pude preguntar» no es un verde: se dice tal cual.
+    $("veredicto").className = "veredicto v-ERROR";
+    $("v-titulo").textContent = "NO PUDE CONSULTAR";
+    $("v-detalle").textContent = String(e.message);
+    $("v-rut").textContent = "RUT " + rut;
   } finally {
-    $("verificar").disabled = false;
+    $("buscar").disabled = false;
   }
+}
+
+async function historialDe(rut) {
+  // El historial se busca por el RUT tal como se escribió y también normalizado: el de la base es
+  // «15771053-2» y el ejecutivo escribe «15.771.053-2».
+  const limpio = rut.toUpperCase().replace(/[^0-9K]/g, "");
+  const normalizado = limpio.length > 1 ? limpio.slice(0, -1) + "-" + limpio.slice(-1) : rut;
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/ingresos?rut=in.(${encodeURIComponent(rut)},${encodeURIComponent(normalizado)})&select=isapre,fecha_afiliacion,nota&order=fecha_afiliacion.desc`, {
+    headers: cabeceras()
+  });
+  const filas = r.ok ? await r.json() : [];
+  const caja = $("v-historial");
+  if (!filas.length) {
+    caja.classList.add("oculto");
+    return;
+  }
+  caja.classList.remove("oculto");
+  caja.innerHTML = "<div style='font-size:12.5px;color:var(--tenue);margin-bottom:4px;'>Lo que ya está anotado:</div>" +
+    filas.map((f) => `<div class="h-item"><span><b>${f.isapre}</b> · ${f.fecha_afiliacion}</span><span>${f.nota || ""}</span></div>`).join("");
 }
 
 async function anotar() {
   const rut = $("rut").value.trim(), isapre = $("isapre").value, fecha = $("fecha").value;
-  const nota = $("nota").value.trim();
-  const estado = $("estado-ingreso");
+  const nota = $("nota").value.trim(), estado = $("estado-ingreso");
   estado.className = "aviso";
-  if (!isapre || !fecha) { estado.textContent = "Falta la isapre o la fecha."; return; }
+  // Obligatorios, como pidió: sin isapre no hay multiafiliación posible, y sin fecha no hay plazo.
+  if (!isapre) { estado.innerHTML = '<span class="mal">Falta la isapre: es obligatoria.</span>'; return; }
+  if (!fecha) { estado.innerHTML = '<span class="mal">Falta la fecha: es obligatoria.</span>'; return; }
   $("anotar").disabled = true;
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/ingresos`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON,
-        Authorization: "Bearer " + sesion.access_token,
-        Prefer: "return=minimal"
-      },
+      method: "POST", headers: cabeceras({ Prefer: "return=minimal" }),
       body: JSON.stringify({ rut: rut, isapre: isapre, fecha_afiliacion: fecha, nota: nota || null })
     });
-    if (r.status === 409) { estado.textContent = "Ese ingreso ya estaba anotado (mismo RUT, isapre y fecha)."; }
-    else if (!r.ok) { const t = await r.text(); throw new Error(t.slice(0, 160)); }
-    else { estado.innerHTML = '<span class="ok">Ingreso anotado. Gracias: eso protege al próximo.</span>'; }
+    if (r.status === 409) estado.textContent = "Ese ingreso ya estaba anotado (mismo RUT, isapre y fecha).";
+    else if (!r.ok) throw new Error((await r.text()).slice(0, 160));
+    else {
+      estado.innerHTML = '<span class="ok">Anotado. Gracias: eso protege al próximo.</span>';
+      $("nota").value = "";
+      await buscar();
+      cargarUltimos();
+    }
+  } catch (e) { estado.innerHTML = '<span class="mal">No se pudo anotar: ' + e.message + '</span>'; }
+  finally { $("anotar").disabled = false; }
+}
+
+async function marcar() {
+  const rut = $("rut").value.trim(), motivo = $("motivo").value, prueba = $("prueba").value.trim();
+  const estado = $("estado-blacklist");
+  estado.className = "aviso";
+  if (!motivo) { estado.innerHTML = '<span class="mal">Falta el motivo.</span>'; return; }
+  if (prueba.length < 10) { estado.innerHTML = '<span class="mal">La prueba tiene que decir algo concreto (mínimo 10 caracteres).</span>'; return; }
+  $("marcar").disabled = true;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/etiquetas`, {
+      method: "POST", headers: cabeceras({ Prefer: "return=minimal" }),
+      body: JSON.stringify({ rut: rut, etiqueta: "fraude_confirmado", motivo: motivo, evidencia: prueba })
+    });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 160));
+    estado.innerHTML = '<span class="ok">Marcado en la blacklist. Desde ahora no se puede ingresar.</span>';
+    await buscar();
+  } catch (e) { estado.innerHTML = '<span class="mal">No se pudo marcar: ' + e.message + '</span>'; }
+  finally { $("marcar").disabled = false; }
+}
+
+async function cargarUltimos() {
+  const caja = $("ultimos");
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/ingresos?select=rut,isapre,fecha_afiliacion,nota&order=creado_en.desc&limit=12`, { headers: cabeceras() });
+    const filas = r.ok ? await r.json() : [];
+    caja.innerHTML = filas.length
+      ? filas.map((f) => `<div class="h-item"><span><b>${f.rut}</b> · ${f.isapre}</span><span>${f.fecha_afiliacion}</span></div>`).join("")
+      : '<p class="aviso">Todavía no hay ingresos anotados.</p>';
   } catch (e) {
-    estado.innerHTML = '<span class="mal">No se pudo anotar: ' + e.message + '</span>';
-  } finally {
-    $("anotar").disabled = false;
+    caja.innerHTML = '<p class="aviso mal">No pude leer los últimos: ' + e.message + '</p>';
   }
 }
 
 $("entrar").addEventListener("click", entrar);
 $("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
-$("verificar").addEventListener("click", verificar);
-$("rut").addEventListener("keydown", (e) => { if (e.key === "Enter") verificar(); });
+$("buscar").addEventListener("click", buscar);
+$("rut").addEventListener("keydown", (e) => { if (e.key === "Enter") buscar(); });
 $("anotar").addEventListener("click", anotar);
-$("salir").addEventListener("click", () => { sessionStorage.removeItem("verificador"); guardar(null); $("veredicto").className = "veredicto"; });
+$("marcar").addEventListener("click", marcar);
+$("salir").addEventListener("click", () => { sessionStorage.removeItem("verificador"); guardar(null); });
 
 const guardada = sessionStorage.getItem("verificador");
 if (guardada) { try { guardar(JSON.parse(guardada)); } catch { guardar(null); } } else { guardar(null); }
