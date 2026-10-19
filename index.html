@@ -73,7 +73,7 @@
            padding:4px 10px; border-radius:14px; white-space:nowrap; }
   .marca-fraude { background:linear-gradient(180deg,#e0372c,#b81f15); color:#fff; box-shadow:0 0 0 1px #ff6b60 inset; }
   .marca-multiafiliacion { background:linear-gradient(180deg,#f07a25,#c85a10); color:#1a0f04; box-shadow:0 0 0 1px #ffb37a inset; }
-  .marca-revisar { background:linear-gradient(180deg,#e8c33c,#c9a11a); color:#241d02; box-shadow:0 0 0 1px #ffe694 inset; }
+  .marca-revisar { background:linear-gradient(180deg,#ff5a3c,#c22a12); color:#fff; box-shadow:0 0 0 1px #ffb3a4 inset; }
   .marca-historico { background:#1e2430; color:#8ea0bb; box-shadow:0 0 0 1px #3c465a inset; }
 </style>
 </head>
@@ -169,7 +169,7 @@
       <div id="tabla-ingresos" style="margin-top:12px;"><p class="aviso">Cargando…</p></div>
       <h3 style="margin:18px 0 8px; font-size:15px;">Blacklist</h3>
       <div id="tabla-etiquetas"><p class="aviso">Cargando…</p></div>
-      <button id="confirmar-todas" class="peligro oculto">Confirmar todas las «POR CONFIRMAR» como BLACKLIST</button>
+      <button id="confirmar-todas" class="peligro oculto">Confirmar todas las en alerta FRAUDE como BLACKLIST</button>
       <p class="aviso" id="estado-confirmar"></p>
     </section>
 
@@ -232,7 +232,7 @@ const cabeceras = (extra = {}) => ({
 const TITULOS = {
   FRAUDE: "BLACKLIST — no ingresar",
   MULTIAFILIACION: "BLACKLIST · MULTIAFILIACIÓN",
-  POSIBLE_FRAUDE: "POSIBLE FRAUDE",
+  POSIBLE_FRAUDE: "⚠ FRAUDE — en la lista",
   SIN_ANTECEDENTES: "SIN ANTECEDENTES"
 };
 
@@ -361,19 +361,19 @@ const ISAPRES = ["Colmena", "Consalud", "Cruz Blanca", "Banmédica", "Vida Tres"
 const ETIQUETAS = [
   ["fraude_confirmado", "BLACKLIST (fraude confirmado)"],
   ["multiafiliacion", "BLACKLIST · MULTIAFILIACIÓN"],
-  ["revisar", "POR CONFIRMAR"]
+  ["revisar", "FRAUDE"]
 ];
 
 // Cómo se nombra cada marca en la lista: una palabra y un color, sin la evidencia detrás (19-10-2026).
 //   · BLACKLIST      → rojo: vigente, no se ingresa.
 //   · MULTIAFILIACIÓN→ naranja: vigente, avisa.
-//   · POR CONFIRMAR  → ámbar: está en la lista, falta la prueba.
+//   · FRAUDE         → rojo con aviso: está en la lista y es peligroso. Es el aspecto de los que ya
 //   · HISTÓRICO      → gris: tuvo comportamiento fraudulento y ya pasaron los 12 meses. Se puede ingresar,
 //                      pero queda a la vista que fue blacklist.
 const MARCAS = {
   fraude_confirmado: ["BLACKLIST", "fraude"],
   multiafiliacion: ["MULTIAFILIACIÓN", "multiafiliacion"],
-  revisar: ["POR CONFIRMAR", "revisar"],
+  revisar: ["⚠ FRAUDE", "revisar"],
   historico: ["HISTÓRICO", "historico"]
 };
 
@@ -403,10 +403,10 @@ async function cargarPanelDueno() {
     if (!ri.ok) throw new Error((await ri.text()).slice(0, 140));
     pintarIngresos(filtro);
     pintarEtiquetas();
-    // El botón de confirmar en bloque solo tiene sentido si hay alguna «por confirmar», y solo para el dueño.
+    // El botón de paso a BLACKLIST solo tiene sentido si hay alguna en alerta FRAUDE, y solo para el dueño.
     const porConfirmar = filasEtiquetas.filter((e) => e.etiqueta === "revisar").length;
     $("confirmar-todas").classList.toggle("oculto", !(esDueno() && porConfirmar > 0));
-    $("confirmar-todas").textContent = `Confirmar las ${porConfirmar} «POR CONFIRMAR» como BLACKLIST`;
+    $("confirmar-todas").textContent = `Confirmar las ${porConfirmar} en alerta FRAUDE como BLACKLIST`;
   } catch (e) {
     $("tabla-ingresos").innerHTML = '<p class="aviso mal">No pude leer el registro: ' + e.message + '</p>';
     $("tabla-etiquetas").innerHTML = '<p class="aviso mal">No pude leer la blacklist.</p>';
@@ -516,13 +516,13 @@ async function borrarEtiqueta(id) {
   if (rutEnPantalla) await buscar();
 }
 
-// El paso de «por confirmar» a «BLACKLIST» de una vez, para no repetirlo 55 veces a mano.
+// El paso de alerta FRAUDE a «BLACKLIST» de una vez, para no repetirlo 55 veces a mano.
 // La decisión sigue siendo del dueño: el botón no aparece hasta que él lo aprieta, y cada fila se puede
 // devolver con su selector.
 async function confirmarTodas() {
   const cuantas = filasEtiquetas.filter((e) => e.etiqueta === "revisar").length;
-  if (!cuantas) { $("estado-confirmar").textContent = "No hay ninguna por confirmar."; return; }
-  if (!confirm(`¿Pasar las ${cuantas} «por confirmar» a BLACKLIST? Desde ese momento no se podrán ingresar.`)) return;
+  if (!cuantas) { $("estado-confirmar").textContent = "No hay ninguna en alerta FRAUDE."; return; }
+  if (!confirm(`¿Pasar las ${cuantas} en alerta FRAUDE a BLACKLIST? Desde ese momento no se podrán ingresar.`)) return;
   const r = await fetch(`${SUPABASE_URL}/rest/v1/etiquetas?etiqueta=eq.revisar`, {
     method: "PATCH", headers: cabeceras({ Prefer: "return=minimal" }),
     body: JSON.stringify({ etiqueta: "fraude_confirmado" })
