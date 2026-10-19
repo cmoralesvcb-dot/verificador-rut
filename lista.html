@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!--
+  El listado (19-10-2026). La pantalla principal: qué hay hoy en el registro.
+
+  Lo que el dueño pidió: «los que aparecen actualmente en el listado son clientes fraudulentos confirmados
+  —podríamos usar una palabra sutil para señalarlo— ya que son los primeros y los originales de la lista;
+  la nueva lista va a tener más información como la isapre de destino y la fecha».
+
+  Por eso la palabra: **ORIGEN**. No dice «fraude» en la cara de nadie, y para quien tiene que entenderlo
+  dice exactamente lo que es: los primeros, los que dieron origen a la lista.
+
+  Cada fila es un RUT con su situación y, si hay, los ingresos que se le conocen (isapre de destino y
+  fecha) — que es la información que la lista vieja no tenía y que ahora sí se puede guardar.
+
+  Sin sesión no se ve nada: la base no contesta si no se entró.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listado · Verificador de RUT</title>
+<style>
+  :root { --fondo:#0f1115; --caja:#171a21; --linea:#272c36; --tinta:#e8eaf0; --tenue:#9aa3b2;
+          --rojo:#d92d20; --naranja:#e8590c; --amarillo:#b58b00; --verde:#12805c; --azul:#2f6feb; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:14px 18px; border-bottom:1px solid var(--linea); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:650; }
+  header small { color:var(--tenue); font-size:12px; display:block; font-weight:400; }
+  main { padding:14px 18px 60px; max-width:820px; margin:0 auto; }
+  .caja { background:var(--caja); border:1px solid var(--linea); border-radius:12px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--tenue); margin:10px 0 6px; }
+  input { width:100%; padding:12px 13px; font-size:16px; color:var(--tinta); background:#10131a;
+    border:1px solid var(--linea); border-radius:9px; }
+  button { padding:12px 14px; font-size:15px; font-weight:650; color:#fff; background:var(--azul);
+    border:0; border-radius:9px; cursor:pointer; width:100%; margin-top:12px; }
+  button.secundario { background:#22262f; color:var(--tenue); font-weight:500; width:auto; margin:0; }
+  .resumen { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .pastilla { border:1px solid var(--linea); border-radius:999px; padding:6px 12px; font-size:12.5px; color:var(--tenue); }
+  .pastilla b { color:var(--tinta); font-weight:650; }
+  .fila-lista { border-top:1px solid var(--linea); padding:11px 2px; display:flex; gap:10px; justify-content:space-between; align-items:flex-start; }
+  .fila-lista:first-child { border-top:0; }
+  .rut { font-family:ui-monospace,Consolas,monospace; font-size:14.5px; }
+  .detalle { font-size:12.5px; color:var(--tenue); margin-top:3px; }
+  .marca { font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:4px 8px; border-radius:6px; white-space:nowrap; }
+  .m-ORIGEN { background:#2a1210; color:#ff8b80; border:1px solid var(--rojo); }
+  .m-ESTUDIO { background:#241f09; color:#f0cf5f; border:1px solid var(--amarillo); }
+  .m-ATENCION { background:#2a1a0d; color:#ffab70; border:1px solid var(--naranja); }
+  .m-OTRO { background:#1b1d22; color:var(--tenue); border:1px solid var(--linea); }
+  .oculto { display:none !important; }
+  .aviso { font-size:13px; color:var(--tenue); }
+  .mal { color:#ff8b80; }
+  a { color:#7aa7ff; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Listado del registro</h1>
+    <small id="quien">sin sesión</small>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <button id="ir-verificar" class="secundario">Verificar un RUT</button>
+    <button id="salir" class="secundario oculto">Salir</button>
+  </div>
+</header>
+
+<main>
+
+  <section id="entrada" class="caja">
+    <label for="correo">Correo</label>
+    <input id="correo" type="email" autocomplete="username" placeholder="tu correo">
+    <label for="clave">Contraseña</label>
+    <input id="clave" type="password" autocomplete="current-password" placeholder="tu contraseña">
+    <button id="entrar">Entrar</button>
+    <p id="error-entrada" class="aviso mal"></p>
+  </section>
+
+  <section id="listado" class="oculto">
+    <div class="resumen" id="resumen"></div>
+    <div class="caja" style="padding:6px 14px;">
+      <div id="filas"><p class="aviso">Cargando…</p></div>
+    </div>
+    <p class="aviso">El listado se lee de la misma base que consulta el verificador: si un RUT entra aquí,
+    el veredicto cambia al instante. No hay dos listas.</p>
+  </section>
+
+</main>
+
+<script>
+const SUPABASE_URL = "https://mypssxutagholelmiolu.supabase.co";
+const SUPABASE_ANON = "sb_publishable_LOUYqu66Fjb3qhaA8NanSg__O1XaSa1";
+const $ = (id) => document.getElementById(id);
+let sesion = null;
+
+// Los nombres que ve el ejecutivo. «ORIGEN» es la palabra sutil que pidió el dueño para los primeros,
+// los que dieron origen a la lista, sin decirle «fraude» en la cara a nadie.
+const MARCAS = {
+  fraude_confirmado: ["ORIGEN", "quien lo ingresó dejó prueba: no ingresar"],
+  revisar: ["ESTUDIO", "marcado desde la lista original: se ingresa dejando nota"],
+  posible_fraude: ["ATENCIÓN", "hay un dato que no calza: se ingresa dejando nota"],
+  sin_antecedentes: ["—", "sin antecedentes"]
+};
+const ORDEN = { fraude_confirmado: 0, posible_fraude: 1, revisar: 2, sin_antecedentes: 3 };
+
+function guardar(s) {
+  sesion = s;
+  if (s) sessionStorage.setItem("verificador", JSON.stringify(s));
+  $("entrada").classList.toggle("oculto", !!s);
+  $("listado").classList.toggle("oculto", !s);
+  $("salir").classList.toggle("oculto", !s);
+  $("quien").textContent = s ? (s.user?.email || "sesión abierta") : "sin sesión";
+  if (s) cargar();
+}
+
+async function entrar() {
+  const correo = $("correo").value.trim(), clave = $("clave").value;
+  $("error-entrada").textContent = "";
+  if (!correo || !clave) { $("error-entrada").textContent = "Falta el correo o la contraseña."; return; }
+  $("entrar").disabled = true;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON },
+      body: JSON.stringify({ email: correo, password: clave })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error_description || j.msg || "no pude entrar");
+    guardar(j);
+  } catch (e) { $("error-entrada").textContent = "No pude entrar: " + e.message; }
+  finally { $("entrar").disabled = false; }
+}
+
+async function pedir(tabla, consulta) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${tabla}?${consulta}`, {
+    headers: { apikey: SUPABASE_ANON, Authorization: "Bearer " + sesion.access_token }
+  });
+  if (!r.ok) throw new Error(`${tabla}: ${(await r.text()).slice(0, 120)}`);
+  return r.json();
+}
+
+async function cargar() {
+  const caja = $("filas");
+  caja.innerHTML = '<p class="aviso">Cargando…</p>';
+  try {
+    // Las etiquetas y los ingresos se piden por separado y se juntan acá: así se ve, para cada RUT, qué
+    // es y adónde se le vio ingresar —que es lo que la lista vieja no tenía—.
+    const etiquetas = await pedir("etiquetas", "select=rut,etiqueta,motivo,evidencia,creado_en&order=creado_en.desc&limit=2000");
+    const ingresos = await pedir("ingresos", "select=rut,isapre,fecha_afiliacion&order=fecha_afiliacion.desc&limit=2000");
+
+    const porRut = new Map();
+    for (const e of etiquetas) {
+      if (!porRut.has(e.rut)) porRut.set(e.rut, { rut: e.rut, etiqueta: e.etiqueta, motivo: e.motivo, evidencia: e.evidencia, ingresos: [] });
+    }
+    for (const i of ingresos) {
+      const f = porRut.get(i.rut);
+      if (f) f.ingresos.push(i);
+    }
+    const filas = [...porRut.values()].sort((a, b) =>
+      (ORDEN[a.etiqueta] ?? 9) - (ORDEN[b.etiqueta] ?? 9) || a.rut.localeCompare(b.rut));
+
+    const cuenta = {};
+    for (const f of filas) cuenta[f.etiqueta] = (cuenta[f.etiqueta] || 0) + 1;
+    $("resumen").innerHTML = Object.entries(cuenta)
+      .map(([k, v]) => `<span class="pastilla">${(MARCAS[k] || [k])[0]} <b>${v}</b></span>`).join("")
+      + `<span class="pastilla">total <b>${filas.length}</b></span>`;
+
+    caja.innerHTML = filas.map((f) => {
+      const [marca, texto] = MARCAS[f.etiqueta] || ["OTRO", f.etiqueta];
+      const viajes = f.ingresos.length
+        ? f.ingresos.map((i) => `${i.isapre} · ${i.fecha_afiliacion}`).join(" &nbsp;·&nbsp; ")
+        : "sin ingreso anotado";
+      return `<div class="fila-lista">
+        <div>
+          <div class="rut">${f.rut}</div>
+          <div class="detalle">${texto}</div>
+          <div class="detalle">${viajes}</div>
+        </div>
+        <span class="marca m-${marca === "—" ? "OTRO" : marca}">${marca}</span>
+      </div>`;
+    }).join("") || '<p class="aviso">No hay nada en el registro todavía.</p>';
+  } catch (e) {
+    caja.innerHTML = '<p class="aviso mal">No pude leer el listado: ' + e.message + '</p>';
+  }
+}
+
+$("entrar").addEventListener("click", entrar);
+$("clave").addEventListener("keydown", (e) => { if (e.key === "Enter") entrar(); });
+$("salir").addEventListener("click", () => { sessionStorage.removeItem("verificador"); guardar(null); });
+$("ir-verificar").addEventListener("click", () => { location.href = "index.html"; });
+
+const guardada = sessionStorage.getItem("verificador");
+if (guardada) { try { guardar(JSON.parse(guardada)); } catch { guardar(null); } } else { guardar(null); }
+</script>
+</body>
+</html>
