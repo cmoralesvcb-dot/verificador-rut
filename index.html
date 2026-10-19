@@ -68,6 +68,13 @@
   .luz-amarilla { background:#2e2808; color:#f0cf5f; border:1px solid var(--amarillo); }
   .luz-verde { background:#0b2a20; color:#5fd6a8; border:1px solid var(--verde); }
   .luz-nada { display:none; }
+  /* Las marcas del listado: poco texto, mucho color. El ejecutivo tiene que ver el estado de un vistazo. */
+  .marca { display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+           padding:4px 10px; border-radius:14px; white-space:nowrap; }
+  .marca-fraude { background:linear-gradient(180deg,#e0372c,#b81f15); color:#fff; box-shadow:0 0 0 1px #ff6b60 inset; }
+  .marca-multiafiliacion { background:linear-gradient(180deg,#f07a25,#c85a10); color:#1a0f04; box-shadow:0 0 0 1px #ffb37a inset; }
+  .marca-revisar { background:linear-gradient(180deg,#e8c33c,#c9a11a); color:#241d02; box-shadow:0 0 0 1px #ffe694 inset; }
+  .marca-historico { background:#1e2430; color:#8ea0bb; box-shadow:0 0 0 1px #3c465a inset; }
 </style>
 </head>
 <body>
@@ -352,15 +359,42 @@ const ISAPRES = ["Colmena", "Consalud", "Cruz Blanca", "Banmédica", "Vida Tres"
 const ETIQUETAS = [
   ["fraude_confirmado", "BLACKLIST (fraude confirmado)"],
   ["multiafiliacion", "BLACKLIST · MULTIAFILIACIÓN"],
-  ["revisar", "Para revisar"]
+  ["revisar", "POR CONFIRMAR"]
 ];
+
+// Cómo se nombra cada marca en la lista: una palabra y un color, sin la evidencia detrás (19-10-2026).
+//   · BLACKLIST      → rojo: vigente, no se ingresa.
+//   · MULTIAFILIACIÓN→ naranja: vigente, avisa.
+//   · POR CONFIRMAR  → ámbar: está en la lista, falta la prueba.
+//   · HISTÓRICO      → gris: tuvo comportamiento fraudulento y ya pasaron los 12 meses. Se puede ingresar,
+//                      pero queda a la vista que fue blacklist.
+const MARCAS = {
+  fraude_confirmado: ["BLACKLIST", "fraude"],
+  multiafiliacion: ["MULTIAFILIACIÓN", "multiafiliacion"],
+  revisar: ["POR CONFIRMAR", "revisar"],
+  historico: ["HISTÓRICO", "historico"]
+};
+
+function esHistorico(e) {
+  // Doce meses desde que se marcó: el mismo plazo que usa la base para sanear.
+  const limite = new Date();
+  limite.setMonth(limite.getMonth() - 12);
+  return new Date(e.creado_en) < limite;
+}
+
+function marcaDe(e) {
+  if (!esHistorico(e)) return MARCAS[e.etiqueta] || [e.etiqueta.toUpperCase(), "revisar"];
+  // Un fraude confirmado NO se sanea; solo lo que tenía plazo se vuelve histórico.
+  if (e.etiqueta === "fraude_confirmado") return MARCAS.fraude_confirmado;
+  return MARCAS.historico;
+}
 
 async function cargarPanelDueno() {
   const filtro = ($("filtro")?.value || "").trim().toLowerCase();
   try {
     const [ri, re] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/ingresos?select=id,rut,isapre,fecha_afiliacion,nota,creado_en&order=creado_en.desc&limit=300`, { headers: cabeceras() }),
-      fetch(`${SUPABASE_URL}/rest/v1/etiquetas?select=id,rut,etiqueta,motivo,evidencia,creado_en&order=creado_en.desc&limit=300`, { headers: cabeceras() })
+      fetch(`${SUPABASE_URL}/rest/v1/etiquetas?select=id,rut,etiqueta,creado_en&order=creado_en.desc&limit=300`, { headers: cabeceras() })
     ]);
     filasIngresos = ri.ok ? await ri.json() : [];
     filasEtiquetas = re.ok ? await re.json() : [];
@@ -399,7 +433,7 @@ function pintarIngresos(filtro = "") {
       }
       return `<div class="h-item" style="align-items:center;">
         <span><b>${f.rut}</b> · ${f.isapre}</span>
-        <span>${f.fecha_afiliacion}${f.nota ? " · " + f.nota : ""}</span>
+        <span>${f.fecha_afiliacion}</span>
         <span>${esDueno() ? `<button class="secundario" onclick="editarIngreso(${f.id})">Editar</button>` : ""}</span>
       </div>`;
     }).join("");
@@ -434,17 +468,28 @@ async function borrarIngreso(id) {
 function pintarEtiquetas() {
   const caja = $("tabla-etiquetas");
   if (!filasEtiquetas.length) { caja.innerHTML = '<p class="aviso">La blacklist está vacía.</p>'; return; }
-  caja.innerHTML = filasEtiquetas.map((e) => `<div style="border-top:1px solid var(--linea);padding:8px 0;">
-      <div class="h-item" style="padding:0;"><span><b>${e.rut}</b> · ${e.etiqueta}</span><span>${e.creado_en.slice(0, 10)}</span></div>
-      ${esDueno() ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
-        <select id="et-${e.id}" style="flex:1;min-width:180px;">
-          ${ETIQUETAS.map(([v, t]) => `<option value="${v}" ${v === e.etiqueta ? "selected" : ""}>${t}</option>`).join("")}
-        </select>
-        <button class="secundario" onclick="guardarEtiqueta(${e.id})">Guardar</button>
-        <button class="secundario peligro" onclick="borrarEtiqueta(${e.id})">Quitar</button>
-      </div>` : ""}
-      <div class="aviso" style="margin-top:4px;">${e.motivo} · ${e.evidencia}</div>
-    </div>`).join("");
+  // Primero lo vigente y después lo histórico: lo que hay que mirar hoy va arriba.
+  const orden = filasEtiquetas.slice().sort((a, b) => {
+    const pa = esHistorico(a) ? 1 : 0, pb = esHistorico(b) ? 1 : 0;
+    return pa - pb || (a.creado_en < b.creado_en ? 1 : -1);
+  });
+  const vigentes = orden.filter((e) => !esHistorico(e)).length;
+  caja.innerHTML = `<div class="aviso" style="margin-bottom:8px;">${vigentes} vigentes · ${orden.length - vigentes} históricos</div>` +
+    orden.map((e) => {
+      const [texto, clase] = marcaDe(e);
+      return `<div style="border-top:1px solid var(--linea);padding:9px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="min-width:120px;"><b>${e.rut}</b></span>
+        <span class="marca marca-${clase}">${texto}</span>
+        <span class="aviso" style="margin:0;margin-left:auto;">${e.creado_en.slice(0, 10)}</span>
+        ${esDueno() ? `<span style="display:flex;gap:6px;width:100%;margin-top:6px;flex-wrap:wrap;">
+          <select id="et-${e.id}" style="flex:1;min-width:170px;">
+            ${ETIQUETAS.map(([v, t]) => `<option value="${v}" ${v === e.etiqueta ? "selected" : ""}>${t}</option>`).join("")}
+          </select>
+          <button class="secundario" onclick="guardarEtiqueta(${e.id})">Guardar</button>
+          <button class="secundario peligro" onclick="borrarEtiqueta(${e.id})">Quitar</button>
+        </span>` : ""}
+      </div>`;
+    }).join("");
 }
 
 async function guardarEtiqueta(id) {
